@@ -17,6 +17,7 @@ import (
 
 // ClientInfo 客户端信息结构体
 type ClientInfo struct {
+	// 主机名
 	Name    string `json:"Name"`
 	CPU     string `json:"CPU"`
 	RAM     string `json:"RAM"`
@@ -24,8 +25,10 @@ type ClientInfo struct {
 	SN      string `json:"SN"`
 	MAC     string `json:"MAC"`
 	IP      string `json:"IP"`
+	// 客户端版本
 	UpVer   string `json:"up_ver"`
 	Comment string `json:"comment"`
+	// 网络类型，判断其实不准
 	Network string `json:"Network"`
 }
 
@@ -76,6 +79,7 @@ func (db *Database) CreateTable() error {
 	}
 
     // 兼容已存在的表，确保存在 post_at 字段
+	// 注释掉了，mysql8不支持这个
     //if _, err := db.conn.Exec("ALTER TABLE client_info ADD COLUMN IF NOT EXISTS post_at TIMESTAMP NULL DEFAULT NULL"); err != nil {
         // 某些 MySQL 版本不支持 IF NOT EXISTS，这里忽略 "Duplicate column" 错误
     //    if !isDuplicateColumnError(err) {
