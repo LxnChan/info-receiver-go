@@ -104,7 +104,7 @@ go run main.go -dsn "root:password@tcp(localhost:3306)/goup" -port 8080 -log-dir
   "RAM": "16GB",
   "Disk": "936GB",
   "SN": "J7K9NOLK",
-  "MAC": "A5:E9:E4:87:71:F2",
+  "MAC": "a5e9.e487.71f2",
   "IP": "192.168.233.233",
   "up_ver": "0.9",
   "comment": "Lily's Notebook",
@@ -204,7 +204,7 @@ curl -X POST http://localhost:8080/api/client \
     "RAM": "16GB",
     "Disk": "936GB",
     "SN": "J7K9NOLK",
-    "MAC": "A5:E9:E4:87:71:F2",
+    "MAC": "a5e9.e487.71f2",
     "IP": "192.168.233.233",
     "up_ver": "0.9",
     "comment": "Lily'\''s Notebook",
@@ -233,6 +233,66 @@ curl -X POST http://localhost:8080/api/client \
 ```
 成功保存新客户端数据: DESKTOP-4JKIOMP (192.168.233.233) - MAC: A5:E9:E4:87:71:F2, SN: J7K9NOLK
 成功更新客户端数据: DESKTOP-4JKIOMP (192.168.233.234) - MAC: A5:E9:E4:87:71:F2, SN: J7K9NOLK
+```
+
+## 客户端
+
+客户端用于在主机上采集信息并上报到本服务的 `/api/client` 接口，支持 Linux 与 Windows（单一 Go 代码跨平台编译）。
+
+### 采集内容
+
+- Name: 计算机名
+- CPU: 处理器型号
+- RAM: 物理内存总量（人类可读）
+- Disk: 系统盘大小（Linux 根分区，Windows 系统卷）
+- SN: 系统序列号
+- MAC: 所选网卡的 MAC，统一规范为小写 `xxxx.xxxx.xxxx`
+- IP: 所选网卡的 IPv4 地址
+- up_ver: 客户端版本
+- comment: 命令行传入的备注
+- Network: 根据所选网卡判断，`WIFI` 或 `ETHERNET`，无法判定为 `null`
+
+选择网卡规则（去除虚拟网卡影响）：
+- 仅选择“物理网卡”且“连接状态为 Up”的第一块网卡
+- Linux：排除 docker/veth/br-/vmnet/vboxnet/vmware/virbr/zerotier/tailscale/wg/tun/tap/lo 等；要求 `operstate=up` 且存在 `/sys/class/net/<iface>/device`。无线判断基于 `/sys/class/net/<iface>/wireless`。
+- Windows：`Get-NetAdapter` 过滤 `Status='Up'`、`Virtual=$false`、`HardwareInterface=$true`；网络类型基于 `NdisPhysicalMedium` 或描述兜底判断。
+
+### 使用方法
+
+```bash
+# Linux 运行
+cd client
+GOOS=linux GOARCH=amd64 go build -o client-linux
+./client-linux -s http://server:8080 -c "This is my host"
+
+# Windows 运行（可在 Linux 交叉编译）
+cd client
+GOOS=windows GOARCH=amd64 go build -o client-windows.exe
+./client-windows.exe -s http://server:8080 -c "Office PC"
+
+# 也可直接指定完整接口
+./client-linux -s http://server:8080/api/client -c "lab"
+```
+
+参数说明：
+- `-s` 服务器地址（必填）。可为 `http://host:port` 或完整接口 `http://host:port/api/client`。
+- `-c` 备注 comment（可选）。
+- `-t` HTTP 超时时间（可选，默认 10s）。
+
+请求示例（客户端上报实际 JSON）：
+```json
+{
+  "Name": "DESKTOP-4JKIOMP",
+  "CPU": "Intel Core i9-9900K",
+  "RAM": "16GB",
+  "Disk": "936GB",
+  "SN": "J7K9NOLK",
+  "MAC": "a5e9.e487.71f2",
+  "IP": "192.168.233.233",
+  "up_ver": "0.9",
+  "comment": "This is my host",
+  "Network": "ETHERNET"
+}
 ```
 
 ## 部署
