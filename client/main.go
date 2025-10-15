@@ -22,7 +22,7 @@ type Payload struct {
 	IP      string  `json:"IP"`
 	UpVer   string  `json:"up_ver"`
 	Comment string  `json:"comment"`
-	Network *string `json:"Network"` // 始终返回null
+    Network *string `json:"Network"`
 }
 
 const clientVersion = "0.9"
@@ -53,7 +53,14 @@ func main() {
 	info.MAC = formatMacXXXX(info.MAC)
 
 	// 组装负载
-	var nullStr *string = nil
+    // Network：根据采集结果设置，若为空字符串则仍上报为 null
+    var networkPtr *string
+    if strings.TrimSpace(info.Network) != "" {
+        v := info.Network
+        networkPtr = &v
+    } else {
+        networkPtr = nil
+    }
 	p := Payload{
 		Name:    info.Name,
 		CPU:     info.CPU,
@@ -64,7 +71,7 @@ func main() {
 		IP:      info.IP,
 		UpVer:   clientVersion,
 		Comment: *comment,
-		Network: nullStr,
+        Network: networkPtr,
 	}
 
 	body, err := json.Marshal(p)

@@ -9,6 +9,7 @@ type SysInfo struct {
 	SN   string
 	MAC  string
 	IP   string
+	Network string // WIFI 或 ETHERNET，无法判定可为空字符串
 }
 
 

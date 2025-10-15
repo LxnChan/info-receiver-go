@@ -46,6 +46,27 @@ func CollectSystemInfo() (SysInfo, error) {
 		info.IP = strings.TrimSpace(firstLine(out))
 	}
 
+    // 判定 Network：以当前选择的物理网卡的 NdisPhysicalMedium 来判断
+    if out, err := runPwsh(`(Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.Virtual -eq $false -and $_.HardwareInterface -eq $true } | Select-Object -First 1).NdisPhysicalMedium`); err == nil {
+        medium := strings.ToLower(strings.TrimSpace(firstLine(out)))
+        switch medium {
+        case "802.3", "ethernet", "native_802_3":
+            info.Network = "ETHERNET"
+        case "native_802_11", "wireless", "802.11", "wifi":
+            info.Network = "WIFI"
+        default:
+            // 再用 InterfaceDescription 兜底
+            if out2, err2 := runPwsh(`(Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.Virtual -eq $false -and $_.HardwareInterface -eq $true } | Select-Object -First 1).InterfaceDescription`); err2 == nil {
+                desc := strings.ToLower(strings.TrimSpace(firstLine(out2)))
+                if strings.Contains(desc, "wireless") || strings.Contains(desc, "wifi") || strings.Contains(desc, "wlan") {
+                    info.Network = "WIFI"
+                } else if strings.Contains(desc, "ethernet") || strings.Contains(desc, "gigabit") || strings.Contains(desc, "10/100") {
+                    info.Network = "ETHERNET"
+                }
+            }
+        }
+    }
+
 	if info.Name == "" && info.CPU == "" {
 		return info, errors.New("未能成功采集关键字段")
 	}

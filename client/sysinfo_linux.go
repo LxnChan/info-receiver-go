@@ -96,6 +96,17 @@ func CollectSystemInfo() (SysInfo, error) {
 			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() { continue }
 			if ip.To4() != nil { info.IP = ip.String(); break }
 		}
+		// 判定Network：存在 /sys/class/net/<iface>/wireless 或 type==1 表示以太 & 无 wireless 目录
+		if info.Network == "" {
+			if exists("/sys/class/net/" + name + "/wireless") {
+				info.Network = "WIFI"
+			} else if typ, err := os.ReadFile("/sys/class/net/" + name + "/type"); err == nil {
+				// ARPHRD_ETHER == 1 视为以太网
+				if strings.TrimSpace(string(typ)) == "1" {
+					info.Network = "ETHERNET"
+				}
+			}
+		}
 		if info.IP != "" && info.MAC != "" { break }
 	}
 
