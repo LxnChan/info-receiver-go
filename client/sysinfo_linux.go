@@ -75,9 +75,19 @@ func CollectSystemInfo() (SysInfo, error) {
 	// MAC 与 IP：取一个非回环、非虚拟接口
 	ifaces, _ := net.Interfaces()
 	for _, nic := range ifaces {
-		if nic.Flags&net.FlagLoopback != 0 || nic.Flags&net.FlagUp == 0 { continue }
 		name := strings.ToLower(nic.Name)
+		// 排除回环与常见虚拟接口
+		if nic.Flags&net.FlagLoopback != 0 { continue }
 		if isVirtualIface(name) { continue }
+		// 要求内核视为 up（链路up）
+		if nic.Flags&net.FlagUp == 0 { continue }
+		// 要求为物理接口：存在 /sys/class/net/<iface>/device
+		if !exists("/sys/class/net/" + name + "/device") { continue }
+		// 要求 operstate 为 up
+		if state, err := os.ReadFile("/sys/class/net/" + name + "/operstate"); err == nil {
+			if strings.TrimSpace(string(state)) != "up" { continue }
+		}
+
 		mac := nic.HardwareAddr.String()
 		if mac != "" && mac != "00:00:00:00:00:00" { info.MAC = mac }
 		addrs, _ := nic.Addrs()
@@ -86,7 +96,7 @@ func CollectSystemInfo() (SysInfo, error) {
 			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() { continue }
 			if ip.To4() != nil { info.IP = ip.String(); break }
 		}
-		if info.IP != "" { break }
+		if info.IP != "" && info.MAC != "" { break }
 	}
 
 	if info.Name == "" && info.CPU == "" {
@@ -96,10 +106,13 @@ func CollectSystemInfo() (SysInfo, error) {
 }
 
 func isVirtualIface(name string) bool {
-	// 常见虚拟接口前缀
-	patterns := []string{"docker", "veth", "br-", "vmnet", "vboxnet", "zt", "lo"}
-	for _, p := range patterns { if strings.HasPrefix(name, p) { return true } }
-	return false
+    // 常见虚拟/隧道接口前缀
+    patterns := []string{
+        "docker", "veth", "br-", "vmnet", "vboxnet", "vbox", "vmware", "virbr",
+        "zt", "zerotier", "tailscale", "ts", "wg", "tun", "tap", "lo", "vcan",
+    }
+    for _, p := range patterns { if strings.HasPrefix(name, p) { return true } }
+    return false
 }
 
 func humanSize(bytesCount int64) string {
@@ -114,6 +127,11 @@ func humanSize(bytesCount int64) string {
 	// 去除多余小数
 	re := regexp.MustCompile(`\.?0+$`)
 	return re.ReplaceAllString(fmt.Sprintf("%.1f%s", val, units[i]), "")
+}
+
+func exists(path string) bool {
+    if _, err := os.Stat(path); err == nil { return true }
+    return false
 }
 
 

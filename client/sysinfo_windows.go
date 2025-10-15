@@ -38,11 +38,11 @@ func CollectSystemInfo() (SysInfo, error) {
 		info.SN = strings.TrimSpace(firstLine(out))
 	}
 
-	// MAC 与 IP：选非回环、已启用适配器
-	if out, err := runPwsh(`Get-NetIPConfiguration | Where-Object {$_.NetAdapter.Status -eq 'Up'} | Select-Object -First 1 -ExpandProperty NetAdapter | Select-Object -ExpandProperty MacAddress`); err == nil {
+    // 仅选择物理适配器且状态为Up
+    if out, err := runPwsh(`Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.Virtual -eq $false -and $_.HardwareInterface -eq $true } | Select-Object -First 1 -ExpandProperty MacAddress`); err == nil {
 		info.MAC = strings.TrimSpace(firstLine(out))
 	}
-	if out, err := runPwsh(`(Get-NetIPConfiguration | Where-Object {$_.IPv4Address -ne $null})[0].IPv4Address.IPAddress`); err == nil {
+    if out, err := runPwsh(`$n=(Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.Virtual -eq $false -and $_.HardwareInterface -eq $true } | Select-Object -First 1 -ExpandProperty Name); (Get-NetIPConfiguration -InterfaceAlias $n).IPv4Address.IPAddress`); err == nil {
 		info.IP = strings.TrimSpace(firstLine(out))
 	}
 
