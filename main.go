@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gorilla/mux"
 	_ "github.com/go-sql-driver/mysql"
@@ -63,6 +64,7 @@ func (db *Database) CreateTable() error {
 		up_ver VARCHAR(255),
 		comment TEXT,
 		network VARCHAR(255),
+        post_at TIMESTAMP NULL DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
 		INDEX idx_mac (mac)
@@ -72,6 +74,14 @@ func (db *Database) CreateTable() error {
 	if err != nil {
 		return fmt.Errorf("创建数据表失败: %v", err)
 	}
+
+    // 兼容已存在的表，确保存在 post_at 字段
+    //if _, err := db.conn.Exec("ALTER TABLE client_info ADD COLUMN IF NOT EXISTS post_at TIMESTAMP NULL DEFAULT NULL"); err != nil {
+        // 某些 MySQL 版本不支持 IF NOT EXISTS，这里忽略 "Duplicate column" 错误
+    //    if !isDuplicateColumnError(err) {
+    //        return fmt.Errorf("添加 post_at 字段失败: %v", err)
+    //    }
+    //}
 	
     // 创建变更记录表
     changes := `
@@ -120,55 +130,75 @@ func (db *Database) CheckExistingRecord(info *ClientInfo) (int, error) {
 	return id, nil
 }
 
-// InsertOrUpdateClientInfo 插入或更新客户端信息
-func (db *Database) InsertOrUpdateClientInfo(info *ClientInfo) (bool, error) {
+// InsertOrUpdateClientInfo 插入或更新客户端信息，返回结果类型：insert/update/nochange
+func (db *Database) InsertOrUpdateClientInfo(info *ClientInfo) (string, error) {
 	// 检查是否存在重复记录
 	existingId, err := db.CheckExistingRecord(info)
 	if err != nil {
-		return false, err
+        return "", err
 	}
 	
     if existingId > 0 {
-		// 更新现有记录
-		query := `
-		UPDATE client_info SET 
-			name = ?, cpu = ?, ram = ?, disk = ?, 
-			sn = ?, mac = ?, ip = ?, up_ver = ?, 
-			comment = ?, network = ?
-		WHERE id = ?`
-		
-        _, err := db.conn.Exec(query, info.Name, info.CPU, info.RAM, info.Disk,
-			info.SN, info.MAC, info.IP, info.UpVer, info.Comment, info.Network, existingId)
-		
-		if err != nil {
-			return false, fmt.Errorf("更新数据失败: %v", err)
-		}
+        // 读取现有记录用于比较
+        var cur ClientInfo
+        sel := `SELECT name, cpu, ram, disk, sn, mac, ip, up_ver, comment, network FROM client_info WHERE id = ?`
+        if err := db.conn.QueryRow(sel, existingId).Scan(
+            &cur.Name, &cur.CPU, &cur.RAM, &cur.Disk, &cur.SN, &cur.MAC, &cur.IP, &cur.UpVer, &cur.Comment, &cur.Network,
+        ); err != nil {
+            return "", fmt.Errorf("读取现有数据失败: %v", err)
+        }
+
+        isSame := cur.Name == info.Name && cur.CPU == info.CPU && cur.RAM == info.RAM && cur.Disk == info.Disk &&
+            cur.SN == info.SN && cur.MAC == info.MAC && cur.IP == info.IP && cur.UpVer == info.UpVer &&
+            cur.Comment == info.Comment && cur.Network == info.Network
+
+        if isSame {
+            // 无变化，仅更新 post_at
+            onlyPostAt := `UPDATE client_info SET post_at = CURRENT_TIMESTAMP WHERE id = ?`
+            if _, err := db.conn.Exec(onlyPostAt, existingId); err != nil {
+                return "", fmt.Errorf("更新post_at失败: %v", err)
+            }
+            return "nochange", nil
+        }
+
+        // 有变化：更新字段并刷新 post_at
+        query := `
+        UPDATE client_info SET 
+            name = ?, cpu = ?, ram = ?, disk = ?, 
+            sn = ?, mac = ?, ip = ?, up_ver = ?, 
+            comment = ?, network = ?, post_at = CURRENT_TIMESTAMP
+        WHERE id = ?`
+        
+        if _, err := db.conn.Exec(query, info.Name, info.CPU, info.RAM, info.Disk,
+            info.SN, info.MAC, info.IP, info.UpVer, info.Comment, info.Network, existingId); err != nil {
+            return "", fmt.Errorf("更新数据失败: %v", err)
+        }
         // 写入变更记录
         if err := db.logChange(existingId, "update", info); err != nil {
-            return false, err
+            return "", err
         }
-		return true, nil // 返回true表示更新了记录
+        return "update", nil
 	} else {
 		// 插入新记录
-		query := `
-		INSERT INTO client_info (name, cpu, ram, disk, sn, mac, ip, up_ver, comment, network)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        query := `
+        INSERT INTO client_info (name, cpu, ram, disk, sn, mac, ip, up_ver, comment, network, post_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 		
         res, err := db.conn.Exec(query, info.Name, info.CPU, info.RAM, info.Disk,
-			info.SN, info.MAC, info.IP, info.UpVer, info.Comment, info.Network)
+            info.SN, info.MAC, info.IP, info.UpVer, info.Comment, info.Network)
 		
 		if err != nil {
-			return false, fmt.Errorf("插入数据失败: %v", err)
+            return "", fmt.Errorf("插入数据失败: %v", err)
 		}
         // 获取新插入的ID并记录变更
         newId, _ := res.LastInsertId()
         if newId > 0 {
             if err := db.logChange(int(newId), "insert", info); err != nil {
-                return false, err
+                return "", err
             }
         }
 		
-		return false, nil // 返回false表示插入了新记录
+        return "insert", nil
 	}
 }
 
@@ -213,8 +243,8 @@ func handleClientData(db *Database) http.HandlerFunc {
 		
 		// 所有字段都是可选的，不需要验证
 		
-		// 插入或更新数据库
-		isUpdated, err := db.InsertOrUpdateClientInfo(&clientInfo)
+        // 插入或更新数据库
+        result, err := db.InsertOrUpdateClientInfo(&clientInfo)
 		if err != nil {
 			log.Printf("数据库操作失败: %v", err)
 			http.Error(w, "服务器内部错误", http.StatusInternalServerError)
@@ -223,11 +253,16 @@ func handleClientData(db *Database) http.HandlerFunc {
 		
 		// 返回成功响应
 		var message string
-		if isUpdated {
-			message = "数据已成功更新"
-		} else {
-			message = "数据已成功保存"
-		}
+        switch result {
+        case "insert":
+            message = "数据已成功保存"
+        case "update":
+            message = "数据已成功更新"
+        case "nochange":
+            message = "数据无变化，已记录上报时间"
+        default:
+            message = "操作已完成"
+        }
 		
 		response := map[string]string{
 			"status": "success",
@@ -237,14 +272,27 @@ func handleClientData(db *Database) http.HandlerFunc {
 		json.NewEncoder(w).Encode(response)
 		
 		// 记录操作类型
-		if isUpdated {
-			log.Printf("成功更新客户端数据: %s (%s) - MAC: %s, SN: %s", 
-				clientInfo.Name, clientInfo.IP, clientInfo.MAC, clientInfo.SN)
-		} else {
-			log.Printf("成功保存新客户端数据: %s (%s) - MAC: %s, SN: %s", 
-				clientInfo.Name, clientInfo.IP, clientInfo.MAC, clientInfo.SN)
-		}
+        switch result {
+        case "insert":
+            log.Printf("成功保存新客户端数据: %s (%s) - MAC: %s, SN: %s",
+                clientInfo.Name, clientInfo.IP, clientInfo.MAC, clientInfo.SN)
+        case "update":
+            log.Printf("成功更新客户端数据: %s (%s) - MAC: %s, SN: %s",
+                clientInfo.Name, clientInfo.IP, clientInfo.MAC, clientInfo.SN)
+        case "nochange":
+            log.Printf("客户端数据无改变: %s (%s) - MAC: %s, SN: %s",
+                clientInfo.Name, clientInfo.IP, clientInfo.MAC, clientInfo.SN)
+        }
 	}
+}
+
+// isDuplicateColumnError 判断是否为重复列错误
+func isDuplicateColumnError(err error) bool {
+    if err == nil {
+        return false
+    }
+    // MySQL 报错文本包含 "Duplicate column name"
+    return strings.Contains(err.Error(), "Duplicate column") || strings.Contains(err.Error(), "Duplicate column name")
 }
 
 func main() {
