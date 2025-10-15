@@ -49,6 +49,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 统一规范 MAC 格式为 xxxx.xxxx.xxxx
+	info.MAC = formatMacXXXX(info.MAC)
+
 	// 组装负载
 	var nullStr *string = nil
 	p := Payload{
@@ -91,6 +94,28 @@ func main() {
 	}
 
 	fmt.Println("上报完成")
+}
+
+// formatMacXXXX 将任意常见 MAC 字符串（aa:bb:cc:dd:ee:ff / aa-bb-... / aabb.ccdd.eeff）
+// 规范化为小写 "xxxx.xxxx.xxxx" 形式；若无法解析则返回原值。
+func formatMacXXXX(mac string) string {
+	if mac == "" { return mac }
+	s := strings.ToLower(mac)
+	// 移除分隔符
+	s = strings.ReplaceAll(s, ":", "")
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, ".", "")
+	// 保留前12个十六进制字符
+	var hexOnly strings.Builder
+	for _, r := range s {
+        if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
+            hexOnly.WriteRune(r)
+        }
+        if hexOnly.Len() == 12 { break }
+    }
+    cleaned := hexOnly.String()
+    if len(cleaned) != 12 { return mac }
+    return cleaned[0:4] + "." + cleaned[4:8] + "." + cleaned[8:12]
 }
 
 

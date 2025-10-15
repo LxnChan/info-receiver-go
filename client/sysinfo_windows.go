@@ -3,10 +3,8 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"regexp"

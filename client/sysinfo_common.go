@@ -11,7 +11,5 @@ type SysInfo struct {
 	IP   string
 }
 
-// CollectSystemInfo 由平台特定文件实现
-func CollectSystemInfo() (SysInfo, error) { return SysInfo{}, nil }
 
 
