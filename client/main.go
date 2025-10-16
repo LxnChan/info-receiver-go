@@ -28,13 +28,16 @@ type Payload struct {
 const clientVersion = "0.9"
 
 func main() {
+    // Windows: 自动请求管理员（UAC）后再继续；其他平台无操作
+	// 暂时先不实装
+    // ensureAdmin()
 	server := flag.String("s", "", "服务器地址，例如 http://host:8080 或完整接口 http://host:8080/api/client")
 	comment := flag.String("c", "", "备注 comment，可为空")
 	timeout := flag.Duration("t", 10*time.Second, "HTTP 超时时间")
 	flag.Parse()
 
 	if *server == "" {
-		fmt.Fprintln(os.Stderr, "必须通过 -s 指定服务器地址")
+		fmt.Fprintln(os.Stderr, "无服务器地址，请通过-s参数指定")
 		os.Exit(2)
 	}
 
