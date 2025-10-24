@@ -1,0 +1,21 @@
+[Unit]
+Description=GoUP-Server
+Documentation=https://github.com/LxnChan/info-receiver-go
+Wants=network-online.target
+After=network-online.target mysql.service
+AssertFileIsExecutable=/opt/goup-server-amd64
+
+[Service]
+WorkingDirectory=/opt
+
+User=goup
+Group=goup
+ProtectProc=invisible
+
+ExecStart=/opt/goup-server-amd64 -dsn "root:password@tcp(localhost:3306)/goup_prod"
+Restart=always
+TimeoutStopSec=infinity
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target
