@@ -29,13 +29,18 @@ type Payload struct {
     Network *string `json:"Network"`
 }
 
-const clientVersion = "0.9"
+const clientVersion = "1.3"
 
 // UpdateInfo 更新信息结构体
 type UpdateInfo struct {
 	Version     string `json:"version"`
-	DownloadURL string `json:"download_url"`
 	Description string `json:"description,omitempty"`
+	Downloads   map[string]DownloadInfo `json:"downloads"`
+}
+
+// DownloadInfo 下载信息结构体
+type DownloadInfo struct {
+	URL string `json:"url"`
 }
 
 // 编译时指定的更新检查URL，可以通过 -ldflags 参数动态设置
@@ -151,7 +156,7 @@ func formatMacXXXX(mac string) string {
 // checkAndUpdate 检查并执行自动更新
 func checkAndUpdate() error {
 	// 如果更新URL为空或默认值，跳过更新检查
-	if updateCheckURL == "" || updateCheckURL == "https://example.com/update.json" {
+	if updateCheckURL == "" || updateCheckURL == "https://raw.githubusercontent.com/LxnChan/info-receiver-go/refs/heads/main/update.json" {
 		return nil
 	}
 	
@@ -171,8 +176,14 @@ func checkAndUpdate() error {
 	
 	fmt.Printf("发现新版本 %s，正在下载更新...\n", updateInfo.Version)
 	
+	// 获取当前平台对应的下载链接
+	downloadURL, err := getDownloadURL(updateInfo)
+	if err != nil {
+		return fmt.Errorf("获取下载链接失败: %v", err)
+	}
+	
 	// 下载并替换
-	if err := downloadAndReplace(updateInfo.DownloadURL); err != nil {
+	if err := downloadAndReplace(downloadURL); err != nil {
 		return fmt.Errorf("下载更新失败: %v", err)
 	}
 	
@@ -203,7 +214,7 @@ func fetchUpdateInfo(url string) (*UpdateInfo, error) {
 		return nil, err
 	}
 	
-	if updateInfo.Version == "" || updateInfo.DownloadURL == "" {
+	if updateInfo.Version == "" || updateInfo.Downloads == nil {
 		return nil, fmt.Errorf("更新信息格式错误")
 	}
 	
@@ -239,6 +250,24 @@ func isNewerVersion(newVersion, currentVersion string) bool {
 	}
 	
 	return false // 版本相同
+}
+
+// getDownloadURL 根据当前平台获取对应的下载链接
+func getDownloadURL(updateInfo *UpdateInfo) (string, error) {
+	// 构建平台标识符
+	platform := runtime.GOOS + "-" + runtime.GOARCH
+	
+	// 查找对应的下载链接
+	if downloadInfo, exists := updateInfo.Downloads[platform]; exists {
+		return downloadInfo.URL, nil
+	}
+	
+	// 如果没找到精确匹配，尝试查找通用版本
+	if downloadInfo, exists := updateInfo.Downloads[runtime.GOOS]; exists {
+		return downloadInfo.URL, nil
+	}
+	
+	return "", fmt.Errorf("未找到平台 %s 对应的下载链接", platform)
 }
 
 // downloadAndReplace 下载新版本并替换当前程序
