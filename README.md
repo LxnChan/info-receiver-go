@@ -237,7 +237,7 @@ curl -X POST http://localhost:8080/api/client \
 
 ## 客户端
 
-客户端用于在主机上采集信息并上报到本服务的 `/api/client` 接口，支持 Linux 与 Windows（单一 Go 代码跨平台编译）。
+客户端用于在主机上采集信息并上报到本服务的 `/api/client` 接口，支持 Linux 与 Windows（Windows 仅支持Windows 10及以上版本）。
 
 ### 采集内容
 
@@ -261,13 +261,9 @@ curl -X POST http://localhost:8080/api/client \
 
 ```bash
 # Linux 运行
-cd client
-GOOS=linux GOARCH=amd64 go build -o client-linux
 ./client-linux -s http://server:8080 -c "This is my host"
 
 # Windows 运行（可在 Linux 交叉编译）
-cd client
-GOOS=windows GOARCH=amd64 go build -o client-windows.exe
 ./client-windows.exe -s http://server:8080 -c "Office PC"
 
 # 也可直接指定完整接口
@@ -295,7 +291,7 @@ GOOS=windows GOARCH=amd64 go build -o client-windows.exe
 }
 ```
 
-## 部署
+## 服务端部署
 
 ### 编译为可执行文件
 
@@ -313,31 +309,6 @@ go build -o goup-server main.go
 ./goup-server -dsn "root:password@tcp(localhost:3306)/goup" -log-dir ./logs
 ```
 
-### 使用Docker（可选）
-
-创建 `Dockerfile`：
-
-```dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go mod tidy
-RUN go build -o goup-server main.go
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/goup-server .
-CMD ["./goup-server"]
-```
-
-构建和运行：
-
-```bash
-docker build -t goup-server .
-docker run -p 8080:8080 goup-server
-```
-
 ## 故障排除
 
 1. **数据库连接失败**：检查MySQL服务是否运行，DSN参数是否正确
@@ -345,7 +316,3 @@ docker run -p 8080:8080 goup-server
 3. **JSON解析失败**：确保发送的JSON格式正确，字段名称匹配
 4. **日志目录创建失败**：确保有权限在指定目录创建日志文件
 5. **缺少DSN参数**：必须使用 `-dsn` 参数指定数据库连接字符串
-
-## 许可证
-
-MIT License
