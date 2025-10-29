@@ -29,7 +29,7 @@ type Payload struct {
     Network *string `json:"Network"`
 }
 
-const clientVersion = "1.3"
+const clientVersion = "1.6"
 
 // UpdateInfo 更新信息结构体
 type UpdateInfo struct {

@@ -49,7 +49,7 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "开始编译客户端..."
 echo "版本: $VERSION"
-sed -i "s/const clientVersion = \"0\.9\"/const clientVersion = \"${VERSION}\"/g" main.go
+sed -i "s/^const clientVersion = \".*\"/const clientVersion = \"${VERSION}\"/" main.go
 echo "输出目录: $OUTPUT_DIR"
 
 # 编译函数
